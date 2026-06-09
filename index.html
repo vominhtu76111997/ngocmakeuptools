@@ -50,6 +50,13 @@ body{
   overflow-x:hidden;
   position:relative;
 }
+body.modal-open{
+  overflow:hidden;
+  position:fixed;
+  width:100%;
+  height:100%;
+  touch-action:none;
+}
 body::before{
   content:'';position:fixed;inset:0;z-index:0;
   background:
@@ -260,6 +267,8 @@ body::before{
   display:flex;align-items:flex-end;justify-content:center;
   opacity:0;visibility:hidden;pointer-events:none;
   transition:opacity 0.25s ease,visibility 0.25s ease;
+  touch-action:none;
+  overscroll-behavior:contain;
 }
 .modal-overlay.show{opacity:1;visibility:visible;pointer-events:auto}
 .modal{
@@ -272,7 +281,10 @@ body::before{
   border-bottom:none;
   box-shadow:0 -8px 40px rgba(0,0,0,0.1);
   transform:translateY(100%);transition:transform 0.35s cubic-bezier(0.32,0.72,0,1);
-  overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overflow-y:auto;overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  touch-action:pan-y pan-x;
 }
 .modal-overlay.show .modal{transform:translateY(0)}
 .modal-handle{
@@ -807,6 +819,7 @@ const app = {
     if (!localStorage.getItem('mk_setupDone')) {
       setTimeout(() => {
         document.getElementById('setupOverlay').classList.add('show');
+        this._lockBody();
       }, 300);
     }
 
@@ -1009,6 +1022,19 @@ const app = {
     this.renderItems();
   },
 
+  // --- BODY SCROLL LOCK (prevents touch-through on modals) ---
+  _scrollY: 0,
+  _lockBody() {
+    this._scrollY = window.scrollY;
+    document.body.classList.add('modal-open');
+    document.body.style.top = `-${this._scrollY}px`;
+  },
+  _unlockBody() {
+    document.body.classList.remove('modal-open');
+    document.body.style.top = '';
+    window.scrollTo(0, this._scrollY);
+  },
+
   // --- FORM ---
   openForm(id) {
     this.editingId = id || null;
@@ -1076,10 +1102,12 @@ const app = {
     }
 
     modal.classList.add('show');
+    this._lockBody();
   },
 
   closeForm() {
     document.getElementById('formModal').classList.remove('show');
+    this._unlockBody();
     this.editingId = null;
     this.photoData = '';
   },
@@ -1244,17 +1272,20 @@ const app = {
     }
     localStorage.setItem('mk_setupDone', '1');
     document.getElementById('setupOverlay').classList.remove('show');
+    this._unlockBody();
   },
 
   closeSetup() {
     localStorage.setItem('mk_setupDone', '1');
     document.getElementById('setupOverlay').classList.remove('show');
+    this._unlockBody();
   },
 
   // --- SETTINGS ---
   openSettings() {
     document.getElementById('settingsUrl').value = this.sync.scriptUrl;
     document.getElementById('settingsModal').classList.add('show');
+    this._lockBody();
   },
 
   saveUrl() {
@@ -1275,6 +1306,7 @@ const app = {
       this.sync.setUrl(url);
     }
     document.getElementById('settingsModal').classList.remove('show');
+    this._unlockBody();
   },
 
   exportData() {
