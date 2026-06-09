@@ -559,7 +559,11 @@ textarea.form-input{resize:vertical;min-height:60px}
       <div class="form-group">
         <label class="form-label">Google Apps Script URL</label>
         <input type="url" class="form-input" id="settingsUrl" placeholder="Dán URL Apps Script tại đây...">
+        <div style="font-size:11px;color:var(--text-tertiary);margin-top:6px;line-height:1.5">
+          URL chỉ cần dán <b>một lần</b>. Khi update code Apps Script, chọn "Manage deployments" → sửa deployment cũ → URL giữ nguyên.
+        </div>
       </div>
+      <button class="btn-primary" style="margin-bottom:16px" onclick="app.saveUrl()">Lưu URL</button>
       <div class="settings-item">
         <div>
           <div class="settings-label">Đồng bộ thủ công</div>
@@ -592,6 +596,32 @@ textarea.form-input{resize:vertical;min-height:60px}
       <div style="text-align:center;padding:16px 0 0;font-size:11px;color:var(--text-tertiary)">
         Makeup Manager v1.0 — Made with ♥ by Tú for Ngọc
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- FIRST-RUN SETUP OVERLAY -->
+<div class="modal-overlay" id="setupOverlay">
+  <div class="modal" style="text-align:center">
+    <div class="modal-handle"></div>
+    <div style="padding:28px 24px 32px">
+      <div style="width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--accent),var(--rose-gold));display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 6px 20px rgba(183,110,121,0.3)">
+        <svg viewBox="0 0 24 24" fill="none" width="32" height="32"><path d="M12 2L4 8l8 14 8-14-8-6z" fill="white" opacity="0.9"/></svg>
+      </div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600;margin-bottom:4px">Mai Hồng Ngọc</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:24px">Quản lý đồ makeup</div>
+      <div style="text-align:left;font-size:13px;color:var(--text-secondary);line-height:1.7;margin-bottom:20px;padding:16px;background:rgba(0,0,0,0.03);border-radius:12px">
+        <b style="color:var(--text-primary)">Đồng bộ cloud (tùy chọn):</b><br>
+        ① Tạo Google Sheet mới<br>
+        ② Extensions → Apps Script → dán code<br>
+        ③ Deploy → Web app → Anyone<br>
+        ④ Copy URL dán vào ô bên dưới
+      </div>
+      <div class="form-group" style="text-align:left">
+        <input type="url" class="form-input" id="setupUrl" placeholder="Dán URL Apps Script (hoặc bỏ qua)...">
+      </div>
+      <button class="btn-primary" onclick="app.completeSetup()" style="margin-bottom:10px">Bắt đầu sử dụng</button>
+      <div style="font-size:12px;color:var(--text-tertiary)">Có thể cài URL sau trong Cài đặt</div>
     </div>
   </div>
 </div>
@@ -769,19 +799,26 @@ const app = {
     this.renderItems();
     this.updateStats();
 
-    // 3. Background sync: pull from cloud if configured
+    // 3. First-run: show setup overlay
+    if (!localStorage.getItem('mk_setupDone')) {
+      setTimeout(() => {
+        document.getElementById('setupOverlay').classList.add('show');
+      }, 300);
+    }
+
+    // 4. Background sync: pull from cloud if configured
     if (this.sync.configured) {
       setTimeout(() => this.sync.fullSync(), 500);
     }
 
-    // 4. Sync on visibility change (tab comes back)
+    // 5. Sync on visibility change (tab comes back)
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && this.sync.configured) {
         this.sync.fullSync();
       }
     });
 
-    // 5. Push dirty before unload
+    // 6. Push dirty before unload
     window.addEventListener('beforeunload', () => {
       if (this.sync.dirtyIds.size > 0 || this.sync.deletedIds.length > 0) {
         const payload = JSON.stringify({
@@ -1184,7 +1221,7 @@ const app = {
   // --- SYNC ---
   async manualSync() {
     if (!this.sync.configured) {
-      this.toast('Cần cài đặt URL Apps Script');
+      this.toast('Hãy dán URL Apps Script trong Cài đặt');
       this.openSettings();
       return;
     }
@@ -1193,17 +1230,45 @@ const app = {
     this.toast('Đã đồng bộ ✓');
   },
 
+  // --- FIRST-RUN SETUP ---
+  completeSetup() {
+    const url = document.getElementById('setupUrl').value.trim();
+    if (url) {
+      this.sync.setUrl(url);
+      this.toast('Đã lưu URL — đang đồng bộ...');
+      setTimeout(() => this.sync.fullSync(), 300);
+    }
+    localStorage.setItem('mk_setupDone', '1');
+    document.getElementById('setupOverlay').classList.remove('show');
+  },
+
+  closeSetup() {
+    localStorage.setItem('mk_setupDone', '1');
+    document.getElementById('setupOverlay').classList.remove('show');
+  },
+
   // --- SETTINGS ---
   openSettings() {
     document.getElementById('settingsUrl').value = this.sync.scriptUrl;
     document.getElementById('settingsModal').classList.add('show');
   },
 
+  saveUrl() {
+    const url = document.getElementById('settingsUrl').value.trim();
+    this.sync.setUrl(url);
+    if (url) {
+      this.toast('Đã lưu URL ✓');
+      setTimeout(() => this.sync.fullSync(), 300);
+    } else {
+      this.toast('Đã xóa URL');
+    }
+  },
+
   closeSettings() {
+    // Also save URL on close in case user forgot to click Lưu
     const url = document.getElementById('settingsUrl').value.trim();
     if (url !== this.sync.scriptUrl) {
       this.sync.setUrl(url);
-      if (url) this.toast('Đã lưu URL ✓');
     }
     document.getElementById('settingsModal').classList.remove('show');
   },
@@ -1255,13 +1320,15 @@ const app = {
   },
 };
 
-// Close modals on overlay click
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', (e) => {
-    if (e.target === el) {
-      el.classList.remove('show');
-    }
-  });
+// Close modals on overlay click — call proper handlers to save state
+document.getElementById('formModal').addEventListener('click', (e) => {
+  if (e.target.id === 'formModal') app.closeForm();
+});
+document.getElementById('settingsModal').addEventListener('click', (e) => {
+  if (e.target.id === 'settingsModal') app.closeSettings();
+});
+document.getElementById('setupOverlay')?.addEventListener('click', (e) => {
+  if (e.target.id === 'setupOverlay') app.closeSetup();
 });
 
 // Init
